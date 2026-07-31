@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
         .build()?;
 
     let allowed_origins = [
-        "https://tejasprabhune.github.io",
+        "https://ojasprabhune.github.io",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
