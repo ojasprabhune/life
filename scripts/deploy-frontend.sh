@@ -3,7 +3,7 @@
 # Run this from anywhere after editing anything in frontend/.
 set -euo pipefail
 
-LIFE_DIR="/Users/ojasprabhune/Documents/personal/life"
+LIFE_DIR="/Users/ojasprabhune/Documents/personal/lifefolders"
 DOTFOLDERS_DIR="/Users/ojasprabhune/Documents/personal/dotfolders"
 API_URL="https://lifefolders-api.onrender.com"
 
