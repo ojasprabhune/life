@@ -18,6 +18,7 @@ mod models;
 mod music;
 mod rank;
 mod routes;
+mod tasks;
 mod usda;
 mod wger;
 
@@ -111,6 +112,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/fields/{id}/plan", axum::routing::put(learning::save_plan))
         .route("/api/resources/{id}", axum::routing::patch(learning::patch_resource))
         .route("/api/topics/{id}", axum::routing::patch(learning::patch_topic))
+        .route("/api/tasks", get(tasks::list_tasks))
+        .route(
+            "/api/tasks/{id}",
+            axum::routing::patch(tasks::patch_task).delete(tasks::delete_task),
+        )
+        .route("/api/task-checkpoints/{id}", axum::routing::patch(tasks::patch_checkpoint))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth))
         .layer(axum::extract::DefaultBodyLimit::max(60 * 1024 * 1024));
 

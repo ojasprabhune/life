@@ -113,6 +113,42 @@ export interface LearningData {
   note: string | null
 }
 
+export interface TaskData {
+  task_id: string
+  title: string
+  category: string
+  due_date: string | null
+  status: 'not_started' | 'in_progress' | 'done'
+  is_exam: boolean
+  action: 'created' | 'status' | 'rescheduled' | 'note'
+  note: string | null
+}
+
+export interface Task {
+  id: string
+  title: string
+  category: string
+  due_date: string | null
+  effort_minutes: number | null
+  status: 'not_started' | 'in_progress' | 'done'
+  is_exam: boolean
+  note: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface TaskCheckpoint {
+  id: string
+  task_id: string
+  offset_days: number
+  due_date: string
+  status: 'todo' | 'done'
+}
+
+export interface TaskWithCheckpoints extends Task {
+  checkpoints: TaskCheckpoint[]
+}
+
 export type ParsedType =
   | 'nutrition'
   | 'person'
@@ -123,6 +159,7 @@ export type ParsedType =
   | 'place'
   | 'trip'
   | 'sleep'
+  | 'task'
 
 export interface Log {
   id: string
@@ -139,6 +176,7 @@ export interface Log {
     | TripData
     | SleepData
     | LearningData
+    | TaskData
 }
 
 export interface Field {
@@ -242,5 +280,6 @@ export type Category =
   | 'trip'
   | 'learning'
   | 'sleep'
+  | 'task'
 
 export type RankDomain = 'album' | 'place' | 'trip'

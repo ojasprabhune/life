@@ -10,6 +10,9 @@ import type {
   RankComparison,
   RankResponse,
   Resource,
+  Task,
+  TaskCheckpoint,
+  TaskWithCheckpoints,
   Tier,
   Topic,
 } from './types'
@@ -222,6 +225,37 @@ export async function patchResource(
     method: 'PATCH',
     headers: { 'content-type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function listTasks(): Promise<TaskWithCheckpoints[]> {
+  const res = await fetch(`${API}/api/tasks`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
+export async function patchTask(
+  id: string,
+  body: Partial<{ status: string; due_date: string; category: string; effort_minutes: number; is_exam: boolean }>,
+): Promise<Task> {
+  const res = await fetch(`${API}/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  const res = await fetch(`${API}/api/tasks/${id}`, { method: 'DELETE', headers: authHeaders() })
+  await check(res)
+}
+
+export async function patchCheckpoint(id: string, status: 'todo' | 'done'): Promise<TaskCheckpoint> {
+  const res = await fetch(`${API}/api/task-checkpoints/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ status }),
   })
   return (await check(res)).json()
 }

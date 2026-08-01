@@ -6,7 +6,7 @@ use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use uuid::Uuid;
 
 use crate::models::{Action, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
-use crate::{groq, learning, wger, AppState};
+use crate::{groq, learning, tasks, wger, AppState};
 
 pub enum AppError {
     NotFound,
@@ -258,6 +258,7 @@ pub async fn create_log(
         now_local.format("%Y-%m-%dT%H:%M")
     );
     context.push_str(&learning::context_block(&state).await);
+    context.push_str(&tasks::context_block(&state).await);
 
     let actions =
         groq::parse(&state.http, &state.groq_key, &state.usda_key, raw, &context).await?;
@@ -302,6 +303,9 @@ pub async fn create_log(
             }
             Action::Learning(req) => {
                 logs.push(learning::apply(&state, raw, req).await?);
+            }
+            Action::Task(req) => {
+                logs.push(tasks::apply(&state, raw, req).await?);
             }
         }
     }

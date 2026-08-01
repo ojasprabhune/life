@@ -9,6 +9,7 @@ import { Music } from './Music'
 import { Places } from './Places'
 import { RateModal, rateProps } from './RateModal'
 import { Sleep } from './Sleep'
+import { Tasks } from './Tasks'
 import { Travel } from './Travel'
 
 function localDateStr(d: Date): string {
@@ -53,6 +54,7 @@ const FILTERS: { value: Category; label: string }[] = [
   { value: 'trip', label: 'travel' },
   { value: 'learning', label: 'learning' },
   { value: 'sleep', label: 'sleep' },
+  { value: 'task', label: 'tasks' },
 ]
 
 function matches(log: Log, category: Category): boolean {
@@ -79,6 +81,7 @@ export default function App() {
   if (route.startsWith('#/travel')) return <Travel />
   if (route.startsWith('#/sleep')) return <Sleep />
   if (route.startsWith('#/learning')) return <Learning route={route} />
+  if (route.startsWith('#/tasks')) return <Tasks />
   return <Home />
 }
 
@@ -256,6 +259,9 @@ function Home() {
           </a>
           <a className="guide-link" href="#/sleep">
             sleep
+          </a>
+          <a className="guide-link" href="#/tasks">
+            tasks
           </a>
           <a className="guide-link" href="#/guide">
             guide

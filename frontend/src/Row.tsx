@@ -10,6 +10,7 @@ import type {
   SleepData,
   SongData,
   SongStatus,
+  TaskData,
   TripData,
   WorkoutData,
 } from './types'
@@ -119,6 +120,13 @@ function summary(log: Log): string {
     }
     case 'learning':
       return learningSummary(log.data as LearningData)
+    case 'task': {
+      const t = log.data as TaskData
+      const due = t.due_date ? `, due ${t.due_date}` : ''
+      if (t.action === 'status') return `${t.status === 'done' ? 'completed' : t.status === 'in_progress' ? 'started' : 'updated'}: ${t.title}`
+      if (t.action === 'rescheduled') return `rescheduled: ${t.title}${due}`
+      return `added task: ${t.title}${due}`
+    }
   }
 }
 
@@ -141,6 +149,8 @@ function badge(log: Log): { label: string; kind: string } {
       return { label: 'sleep', kind: 'sleep' }
     case 'learning':
       return { label: 'learning', kind: 'learning' }
+    case 'task':
+      return { label: 'task', kind: 'task' }
   }
 }
 
@@ -235,6 +245,8 @@ function Editor({
       return <SleepEditor log={log} onChange={onChange} onDelete={onDelete} />
     case 'learning':
       return <LearningEditor log={log} onChange={onChange} onDelete={onDelete} />
+    case 'task':
+      return <TaskLogEditor log={log} onChange={onChange} onDelete={onDelete} />
   }
 }
 
@@ -468,6 +480,30 @@ function LearningEditor({ log, onChange, onDelete }: EditorProps) {
     .filter(Boolean)
     .join(' · ')
 
+  return (
+    <div className="editor">
+      <span className="workout-meta">{meta}</span>
+      <label>
+        <span>note</span>
+        <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      </label>
+      <EditorFooter
+        saving={saving}
+        error={error}
+        onSave={() => save({ note: note.trim() || null })}
+        onDelete={remove}
+      />
+    </div>
+  )
+}
+
+function TaskLogEditor({ log, onChange, onDelete }: EditorProps) {
+  const data = log.data as TaskData
+  const [note, setNote] = useState(data.note ?? '')
+  const { saving, error, save, remove } = useEditor(log, onChange, onDelete)
+  const meta = [data.category, data.status, data.due_date ? `due ${data.due_date}` : null]
+    .filter(Boolean)
+    .join(' · ')
   return (
     <div className="editor">
       <span className="workout-meta">{meta}</span>

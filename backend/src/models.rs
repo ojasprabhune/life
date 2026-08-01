@@ -154,6 +154,29 @@ pub struct LearningData {
     pub note: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TaskData {
+    pub task_id: Uuid,
+    pub title: String,
+    pub category: String,
+    pub due_date: Option<chrono::NaiveDate>,
+    pub status: String,
+    pub is_exam: bool,
+    pub action: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct TaskRequest {
+    pub title: String,
+    pub category: Option<String>,
+    pub due_date: Option<String>,
+    pub effort_minutes: Option<i32>,
+    pub status: Option<String>,
+    pub is_exam: Option<bool>,
+    pub note: Option<String>,
+}
+
 #[derive(Debug)]
 pub struct LearningRequest {
     pub field: Option<String>,
@@ -175,6 +198,7 @@ pub enum Action {
     ItineraryItem { destination: Option<String>, name: String, note: Option<String> },
     Sleep { action: String, at: Option<String> },
     Learning(LearningRequest),
+    Task(TaskRequest),
 }
 
 pub enum Parsed {

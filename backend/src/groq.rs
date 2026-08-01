@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use crate::models::{
     Action, AlbumData, ItineraryEntry, LearningRequest, NutritionData, Parsed, PersonData,
-    PlaceData, SongData, TripData,
+    PlaceData, SongData, TaskRequest, TripData,
 };
 use crate::usda;
 
@@ -274,6 +274,30 @@ fn tools() -> Value {
                     }
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "log_task",
+                "description": "Create or update a task: homework, a project, or an extracurricular commitment (debate, robotics, outreach, volunteering, research, clubs, etc). Match the title against the user's open tasks listed in the system prompt when the entry refers to something already tracked; otherwise this creates a new one.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "Short task title. When updating an existing task, phrase this close to its tracked title so it matches." },
+                        "category": { "type": "string", "description": "e.g. homework, project, debate, robotics, outreach, volunteering, research, personal, or another short label" },
+                        "due_date": { "type": "string", "description": "YYYY-MM-DD if a deadline is stated or already known for this task" },
+                        "effort_minutes": { "type": "integer", "description": "Estimated time needed in minutes, if stated or clearly implied" },
+                        "status": {
+                            "type": "string",
+                            "enum": ["not_started", "in_progress", "done"],
+                            "description": "in_progress when they say they started or are working on it, done when they say they finished or turned it in, not_started for a freshly added task"
+                        },
+                        "is_exam": { "type": "boolean", "description": "true only for a genuine test, exam, or quiz, so spaced study reminders get scheduled before the due date" },
+                        "note": { "type": "string", "description": "any remaining detail" }
+                    },
+                    "required": ["title"]
+                }
+            }
         }
     ])
 }
@@ -308,6 +332,12 @@ A phrase stating both a bedtime and waking up means one log_sleep call with acti
 both and at set to the stated bedtime. \
 Study progress, watched lectures, finished chapters, or practice problems are \
 log_learning; match names against the configured fields listed below when present. \
+Homework, projects, and extracurricular commitments (debate, robotics, outreach, \
+volunteering, research, clubs, etc.) are log_task. A new title creates a task; \
+wording close to an already-tracked task listed below updates it instead: set \
+status done when they say they finished or turned it in, in_progress when they \
+say they started or are working on it. Set is_exam true only for a real test, \
+exam, or quiz — problem sets, homework, and projects are not exams. \
 Always call at least one tool.";
 
 async fn chat(
@@ -541,6 +571,19 @@ pub async fn parse(
                     problems_type: opt_str(&args, "problems_type")
                         .filter(|t| matches!(t.as_str(), "theory" | "implementation")),
                     confidence_signal: opt_str(&args, "confidence_signal"),
+                    note: opt_str(&args, "note"),
+                }));
+            }
+            "log_task" => {
+                let status = opt_str(&args, "status")
+                    .filter(|s| matches!(s.as_str(), "not_started" | "in_progress" | "done"));
+                results.push(Action::Task(TaskRequest {
+                    title: as_str(&args, "title")?,
+                    category: opt_str(&args, "category"),
+                    due_date: opt_str(&args, "due_date"),
+                    effort_minutes: args.get("effort_minutes").and_then(Value::as_i64).map(|n| n as i32),
+                    status,
+                    is_exam: args.get("is_exam").and_then(Value::as_bool),
                     note: opt_str(&args, "note"),
                 }));
             }

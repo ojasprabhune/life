@@ -1,0 +1,81 @@
+# lifefolders
+
+Personal logging app: one text/voice input, LLM tool-calling parser, structured timeline organized by date and category. Tracks nutrition, people, music, workouts, places, trips, sleep, learning, and tasks.
+
+For setup and deployment details, see the [README](./README.md).
+
+## Data model
+
+The `logs` table (`id uuid, created_at timestamptz, raw_input text, parsed_type text CHECK, data jsonb, deleted_at timestamptz`) is the primary workhorse, storing timestamped entries across eight lightweight domains (nutrition, person, album, song, place, trip, sleep, task). Each new `parsed_type` is added via a migration that widens the CHECK constraint.
+
+Two domains break from this JSONB-in-logs pattern:
+
+- **learning** (`backend/migrations/0004_add_batch2.sql`): has real relational tables (`fields`, `resources`, `topics`, `resource_files`) because it needs efficient querying by field/topic/resource relationship, not just "insert and list by created_at." A `logs` row is still written per action (create/update/progress) so timeline history is preserved.
+- **tasks** (`backend/migrations/0005_add_tasks.sql`): similar pattern — a real `tasks` table (title, category, due_date, status, is_exam, effort_minutes) and a related `task_checkpoints` table (spaced-review reminders for exams) for efficient due-date and status queries, plus per-action timeline entries in `logs`.
+
+The JSONB-first convention is: unless there's a concrete querying need beyond date/type filtering (like "all tasks due in the next 7 days" or "relationship between resource and topic"), keep it in `logs.data` and add relational tables only when justified.
+
+## Backend module map
+
+- **main.rs** — bootstrap, route registration, CORS config, shared bearer-token auth middleware.
+- **models.rs** — all entity structs (`NutritionData`, `PersonData`, `TaskData`, etc.) and dispatch enums (`Action`, `Parsed`).
+- **routes.rs** — generic CRUD endpoints for `logs` (`/api/logs`); special-case handlers for entities needing side effects (`upsert_workout`, `handle_sleep`, `append_itinerary`, `transcribe`).
+- **groq.rs** — LLM client (Groq API, tool-calling dispatch, system prompt, context injection).
+- **learning.rs** — learning-domain-specific routes and side-effect logic (field/resource/topic CRUD, PDF ingestion, plan generation).
+- **tasks.rs** — task-domain-specific routes and side-effect logic (task/checkpoint CRUD, fuzzy-match resolution, spaced-review generation).
+- **rank.rs** — shared pairwise-comparison ranking engine used by album/place/trip domains.
+- **usda.rs** — USDA FoodData Central API client for nutrition grounding.
+- **wger.rs** — wger.de gym API client for workout import.
+
+## LLM wiring
+
+A single dispatcher in `groq.rs` sends one big tool list (`log_nutrition`, `log_person`, `log_task`, `log_album`, `log_song`, `log_learning`, `log_workout`, `log_place`, `log_trip`, `log_sleep`, etc.) with `tool_choice: "required"` to one Groq model at a time. Models are tried sequentially (`openai/gpt-oss-120b` → `llama-3.3-70b-versatile`), with fallback on network/API errors.
+
+The one `SYSTEM_PROMPT` in `groq.rs` contains all domain-specific disambiguation rules (portion-size heuristics, exam vs. project classification, sleep parsing, etc.) — this is where cross-cutting logic lives, not in code branches.
+
+Live app state is injected into the prompt per-request via helper functions (`learning::context_block`, `tasks::context_block`) called in `routes::create_log`. This is how the model resolves free text like "finished the chem lab writeup" against an existing task without needing to know its UUID — the open tasks list is appended to the prompt, and the LLM can reference them by title. Reuse this pattern (`*_context_block`) for any future module that needs to reference live state.
+
+Entities that need side effects beyond "insert into `logs`" (workout session tracking, itinerary appends, learning resource ingestion, task create-or-update) go through special `Action` variants (`Workout`, `ItineraryItem`, `Learning`, `Task`) that get dispatched in `routes::create_log`; everything else becomes `Action::Entry(Parsed::...)` and goes straight into the `logs` table.
+
+## Recipe: adding a new tracked entity end-to-end
+
+1. **models.rs**: Define a `NewThingData` struct (the snapshot shape that goes into `logs.data` JSONB). If it requires live state or multiple SQL mutations, also define a corresponding `NewThingRequest` struct and add a `NewThing(NewThingRequest)` arm to the `Action` enum.
+
+2. **groq.rs**: Add a `log_new_thing` function def to the tool list in `tools()`. Add a paragraph to `SYSTEM_PROMPT` explaining the domain's classification rules and expected phrasing. In the `parse()` function, add a match arm for `"log_new_thing"` that constructs either an `Action::NewThing(NewThingRequest{...})` (if it has side effects) or pushes an `Action::Entry(Parsed::NewThing(...))` (if it's plain JSONB).
+
+3. **routes.rs** (if it needs side effects): Add a handler function (or inline code in the action-dispatch match) to call `NewThingRequest` side-effect logic, write a `logs` row via `sqlx::query("INSERT INTO logs ...")`, and return the result. Optionally, inject live state into the prompt via `NewThingRequest` → a `new_thing::context_block(&state)` function called in `create_log`.
+
+4. **migrations** (if it needs relational structure): Create a new `00XX_add_new_thing.sql` migration. If it's simple JSONB in `logs`, just widen the `logs_parsed_type_check` constraint. If it needs real tables (like learning/tasks), define those.
+
+5. **main.rs**: If you added new HTTP routes (e.g. `GET /api/new-things`), register them on the `api` router, protected by `require_auth`. Otherwise, the generic `/api/logs` endpoint covers CRUD.
+
+6. **Frontend types.ts**: Add `NewThingData` (mirror of the Rust struct, matching JSONB keys). Add `'new_thing'` to the `ParsedType` union and the `Log['data']` union (and `Category` union if it's a filterable domain). If it needs a specialized row renderer, add a TypeScript type for it too (see `Task`, `Learning`, etc.).
+
+7. **Frontend Row.tsx**: Add a case to the `summary()` function (one-line description of what happened), `badge()` (category/label pill), `rightSide()` (optional right-side metadata), and `Editor()` dispatch (inline edit form for the log snapshot). Reuse the `useEditor` hook and `EditorFooter` component as-is; they handle save/delete mutations.
+
+8. **Frontend App.tsx**: Add `{value: 'new_thing', label: 'New Things'}` to the `FILTERS` array so it appears as a timeline filter. If you want a dedicated dashboard page (like `Learning.tsx`, `Sleep.tsx`), add a new hash route and a nav link.
+
+9. **Frontend optional**: Add a page like `Learning.tsx` or `Tasks.tsx` if a summary/dashboard view makes sense. Add a paragraph to `Guide.tsx` documenting example phrasing.
+
+## Frontend architecture
+
+Hash-based router (no library): `#/` = home (daily timeline), `#/music` / `#/sleep` / `#/tasks` / etc. = dedicated dashboard pages for complex domains.
+
+The `Home` page renders a daily timeline filtered by date and category. Category filters (a `FILTERS` array of value/label pairs) drive chips in the header.
+
+`Row.tsx` is a per-log-type renderer registry: for each `log.parsed_type`, it dispatches to a `summary()` (one-line description), `badge()` (category/label), `rightSide()` (optional metadata), and `Editor()` (inline edit form). Each type gets a mini editor component (`FoodEditor`, `PersonEditor`, `TaskLogEditor`, etc.) that uses `useEditor` to handle mutations.
+
+Voice input is wired end-to-end: hold the mic button in the input area → `MediaRecorder` → `POST /api/transcribe` (Whisper) → `groq::polish()` (small model cleanup) → text appended to the input box → submit flows through the normal parse pipeline. New entity types get voice capture for free once a tool def exists.
+
+## Constraints
+
+- **Auth**: single shared bearer token (not per-user — all edits share one `AUTH_TOKEN` env var). There is no multi-user account model, no session management, no OAuth.
+- **Deployment**: Render free web service (sleeps after 15 min idle, no background worker / cron process). If proactive features (daily email, scheduled reminders) are needed later, they must be triggered externally (e.g. GitHub Actions cron job) hitting an HTTP endpoint.
+- **Frontend deployment**: NOT auto-deployed on push. Run `scripts/deploy-frontend.sh` locally to build and push the static output to the sibling `dotfolders` repo, which GitHub Pages then serves.
+
+## Conventions
+
+- **Minimal comments**: default to none. Add only when the WHY is non-obvious (hidden constraint, subtle invariant, bug workaround, behavior that surprises readers).
+- **No premature abstraction**: three similar lines is better than a generic helper; don't design for hypothetical future requirements.
+- **No error-handling for impossible scenarios**: trust internal code and framework guarantees; validate only at system boundaries (user input, external APIs).
+- **Reuse existing patterns**: JSONB-in-logs for lightweight entities, `Action` enum dispatch for side effects, `*_context_block` for state injection, `Row.tsx` per-type cases for timeline rendering, hash routes for dashboard pages.
